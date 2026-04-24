@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "hardhat test",
-    "coverage": "npx hardhat coverage",
-    "deploy": "hardhat ignition deploy ignition/modules/deploy.ts --network sepolia"
+    "coverage": "hardhat coverage",
+    "deploy": "hardhat ignition deploy ignition/modules/deploy.ts --network sepolia",
+    "compile": "hardhat compile",
+    "clean": "hardhat clean"
   },
   "keywords": [],
   "author": "",

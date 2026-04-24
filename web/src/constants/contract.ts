@@ -1,9 +1,10 @@
 export const SEPOLIA_CHAIN_ID = 11155111;
 
 export const ADDRESSES = {
-  token: "0x8928046eF425eaA377299C4Bdc5bA2fE6F19C6A6",
-  staking: "0xA31e4c31A3d3cC2e3935fbD059e673Ca3141fA8e",
+  token: import.meta.env.VITE_TOKEN_ADDRESS,
+  staking: import.meta.env.VITE_STAKING_ADDRESS,
 };
+
 
 export const TOKEN_ABI = [
   "function name() view returns (string)",

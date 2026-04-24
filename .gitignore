@@ -147,3 +147,4 @@ artifacts
 cache
 dist
 typechain-types/
+./smart-contracts/ignition/deployments/
