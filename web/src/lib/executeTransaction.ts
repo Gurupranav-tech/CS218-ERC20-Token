@@ -17,7 +17,7 @@ export async function executeTransaction(
 ): Promise<void> {
   setState({ status: "pending" });
   try {
-    const tx = await fn();
+    const tx = await fn() as any;
     setState({ status: "pending", hash: tx.hash });
     await tx.wait();
     setState({ status: "success", hash: tx.hash });
