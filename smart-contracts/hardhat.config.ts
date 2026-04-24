@@ -1,6 +1,7 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import * as dotenv from "dotenv"
+import "hardhat-gas-reporter";
 
 dotenv.config({
   path: "./contracts/.env"
