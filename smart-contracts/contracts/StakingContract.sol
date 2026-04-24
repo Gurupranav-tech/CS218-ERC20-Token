@@ -45,24 +45,25 @@ contract StakingContract is ReentrancyGuard, Ownable {
         emit Staked(msg.sender, amount);
     }
 
-    function unstake() external nonReentrant {
-        StakeInfo memory s = stakes[msg.sender];
-        require(s.amount > 0, "Nothing staked");
+    function unstake(uint256 amount) external nonReentrant {
+      StakeInfo memory s = stakes[msg.sender];
+      require(s.amount > 0, "Nothing staked");
+      require(amount > 0, "Cannot unstake zero");
+      require(amount <= s.amount, "Amount exceeds staked balance");
 
-        uint256 pending = _calculateRewards(msg.sender);
-        uint256 principal = s.amount;
+      uint256 pending = _calculateRewards(msg.sender);
 
-        stakes[msg.sender].amount = 0;
-        stakes[msg.sender].lastClaimTimestamp = 0;
+      stakes[msg.sender].amount -= amount;
+      stakes[msg.sender].lastClaimTimestamp = block.timestamp;
 
-        token.transfer(msg.sender, principal);
+      token.transfer(msg.sender, amount);
 
-        if (pending > 0) {
-            token.mint(msg.sender, pending);
-            emit RewardsClaimed(msg.sender, pending);
-        }
+      if (pending > 0) {
+          token.mint(msg.sender, pending);
+          emit RewardsClaimed(msg.sender, pending);
+      }
 
-        emit Unstaked(msg.sender, principal);
+      emit Unstaked(msg.sender, amount);
     }
 
     function claimRewards() external nonReentrant {

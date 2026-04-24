@@ -81,7 +81,10 @@ export interface StakingContractInterface extends Interface {
     functionFragment: "transferOwnership",
     values: [AddressLike]
   ): string;
-  encodeFunctionData(functionFragment: "unstake", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "unstake",
+    values: [BigNumberish]
+  ): string;
 
   decodeFunctionResult(
     functionFragment: "claimRewards",
@@ -256,7 +259,7 @@ export interface StakingContract extends BaseContract {
     "nonpayable"
   >;
 
-  unstake: TypedContractMethod<[], [void], "nonpayable">;
+  unstake: TypedContractMethod<[amount: BigNumberish], [void], "nonpayable">;
 
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
@@ -301,7 +304,7 @@ export interface StakingContract extends BaseContract {
   ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "unstake"
-  ): TypedContractMethod<[], [void], "nonpayable">;
+  ): TypedContractMethod<[amount: BigNumberish], [void], "nonpayable">;
 
   getEvent(
     key: "OwnershipTransferred"
