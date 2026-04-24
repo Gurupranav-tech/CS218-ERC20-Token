@@ -146,4 +146,4 @@ dist
 artifacts
 cache
 dist
-typechain-types
+typechain-types/
