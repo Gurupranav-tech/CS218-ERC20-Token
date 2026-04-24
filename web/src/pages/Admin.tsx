@@ -16,6 +16,10 @@ export default function Admin() {
   const [isOwner, setIsOwner] = useState<boolean | null>(null);
   const [rateTx, setRateTx] = useState<TxState>({ status: "idle" });
 
+  const [joinerAddress, setJoinerAddress] = useState("");
+  const [joinerAmount, setJoinerAmount] = useState("");
+  const [mintTx, setMintTx] = useState<TxState>({ status: "idle" });
+
   useEffect(() => {
     if (!address) navigate("/");
   }, [address, navigate]);
@@ -49,6 +53,23 @@ export default function Admin() {
       () => {
         setNewRate("");
         fetchAdminData();
+      }
+    );
+  }
+
+  async function handleGiveTokens() {
+    if (!tokenContract || !joinerAddress || !joinerAmount) return;
+
+    await executeTransaction(
+      () =>
+        tokenContract.mint(
+          joinerAddress,
+          BigInt(joinerAmount) * BigInt(10 ** 18)
+        ),
+      setMintTx,
+      () => {
+        setJoinerAddress("");
+        setJoinerAmount("");
       }
     );
   }
@@ -131,6 +152,51 @@ export default function Admin() {
           </div>
 
           <TxStatusBadge state={rateTx} />
+        </div>
+
+        <div className={`card mt-4 ${mintTx.status === "pending" ? "tx-pending" : ""}`}>
+          <h2 className="text-sm font-medium text-[#f0f0f0] mb-1">
+            Give Tokens To New Joiner
+          </h2>
+
+          <p className="text-xs text-[#6b6b6b] mb-5">
+            Mint welcome tokens directly to a new wallet.
+          </p>
+
+          <div className="space-y-3">
+            <input
+              type="text"
+              placeholder="Wallet Address"
+              value={joinerAddress}
+              onChange={(e) => setJoinerAddress(e.target.value)}
+              className="input-field w-full"
+            />
+
+            <input
+              type="number"
+              placeholder="Amount"
+              value={joinerAmount}
+              onChange={(e) => setJoinerAmount(e.target.value)}
+              className="input-field w-full"
+              min="1"
+            />
+
+            <button
+              onClick={handleGiveTokens}
+              disabled={
+                !joinerAddress ||
+                !joinerAmount ||
+                mintTx.status === "pending"
+              }
+              className="btn-primary w-full"
+            >
+              {mintTx.status === "pending"
+                ? "Sending..."
+                : "Send Welcome Tokens"}
+            </button>
+          </div>
+
+          <TxStatusBadge state={mintTx} />
         </div>
 
       </div>
