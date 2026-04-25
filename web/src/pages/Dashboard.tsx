@@ -120,7 +120,7 @@ export default function Dashboard() {
     { label: "Wallet Balance", value: formatTokenAmount(stats.walletBalance), unit: "CS218" },
     { label: "Staked Balance", value: formatTokenAmount(stats.stakedBalance), unit: "CS218" },
     { label: "Pending Rewards", value: formatTokenAmount(stats.pendingRewards), unit: "CS218" },
-    { label: "Reward Rate", value: stats.rewardRate.toString(), unit: "/ 1000 / day" },
+    { label: "Reward Rate", value: stats.rewardRate.toString(), unit: " / day" },
   ];
 
   return (
@@ -160,7 +160,7 @@ export default function Dashboard() {
                   placeholder="0.00"
                   value={stakeAmount}
                   onChange={(e) => setStakeAmount(e.target.value)}
-                  className="input-field pr-14"
+                  className="input-field pr-14 no-spin"
                   min="0"
                 />
                 <button
