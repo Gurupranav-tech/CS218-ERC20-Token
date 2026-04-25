@@ -126,36 +126,24 @@ contract StakingContract is ReentrancyGuard, Ownable {
         emit Staked(msg.sender, amount);
     }
 
-    /// @notice Unstake `amount` tokens and automatically claim any pending rewards
+    /// @notice Unstake `amount` tokens
     /// @dev    CEI pattern: state fully updated before any external token calls.
     ///         OPT 3: struct loaded once; helper receives cached values.
     /// @param  amount Number of tokens to withdraw (in wei, must be > 0 and <= staked balance)
     function unstake(uint256 amount) external nonReentrant {
-        // OPT 3: single SLOAD for both fields.
-        StakeInfo memory s = stakes[msg.sender];
-        require(s.amount > 0,         "StakingContract: nothing staked");
-        require(amount > 0,           "StakingContract: cannot unstake zero");
-        require(amount <= s.amount,   "StakingContract: amount exceeds staked balance");
+      StakeInfo memory s = stakes[msg.sender];
+      require(s.amount > 0,         "StakingContract: nothing staked");
+      require(amount > 0,           "StakingContract: cannot unstake zero");
+      require(amount <= s.amount,   "StakingContract: amount exceeds staked balance");
 
-        // OPT 2: cache rewardRate.
-        uint256 rate    = rewardRate;
+      // ── Effects ───────────────────────────────────────────────────────────
+      stakes[msg.sender].amount             = s.amount - amount;
+      stakes[msg.sender].lastClaimTimestamp = block.timestamp;
 
-        // OPT 3: cached values passed in — zero extra SLOADs.
-        uint256 pending = _calculateRewardsFromCache(s.amount, s.lastClaimTimestamp, rate);
+      // ── Interactions ──────────────────────────────────────────────────────
+      token.safeTransfer(msg.sender, amount);
 
-        // ── Effects ───────────────────────────────────────────────────────────
-        stakes[msg.sender].amount             = s.amount - amount;
-        stakes[msg.sender].lastClaimTimestamp = block.timestamp;
-
-        // ── Interactions ──────────────────────────────────────────────────────
-        token.safeTransfer(msg.sender, amount);
-
-        if (pending > 0) {
-            token.mint(msg.sender, pending);
-            emit RewardsClaimed(msg.sender, pending);
-        }
-
-        emit Unstaked(msg.sender, amount);
+      emit Unstaked(msg.sender, amount);
     }
 
     /// @notice Claim all accrued rewards without unstaking
