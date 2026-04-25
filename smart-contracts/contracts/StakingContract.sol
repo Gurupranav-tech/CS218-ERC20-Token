@@ -138,7 +138,6 @@ contract StakingContract is ReentrancyGuard, Ownable {
 
       // ── Effects ───────────────────────────────────────────────────────────
       stakes[msg.sender].amount             = s.amount - amount;
-      stakes[msg.sender].lastClaimTimestamp = block.timestamp;
 
       // ── Interactions ──────────────────────────────────────────────────────
       token.safeTransfer(msg.sender, amount);

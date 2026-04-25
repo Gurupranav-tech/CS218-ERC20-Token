@@ -206,19 +206,24 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       expect(await staking.getStakedBalance(user1.address)).to.equal(0n);
     });
 
-    it("14. [MAIN TEST CASE] Partial unstaking should leave remainder accruing rewards", async function() {
+    it("14. [MAIN TEST CASE] Partial unstaking should reduce stake balance without resetting timer", async function() {
       const { staking, user1 } = await loadFixture(deployStakingFixture);
+
       await staking.connect(user1).stake(S1000);
+
       const stakeTime = BigInt(await time.latest());
 
       await time.increaseTo(stakeTime + ONE_DAY);
+
       await staking.connect(user1).unstake(S500);
+
       const unstakeTime = BigInt(await time.latest());
 
       await time.increaseTo(unstakeTime + ONE_DAY);
+
       const pending = await staking.getPendingRewards(user1.address);
 
-      expect(pending).to.equal(calcRewards(S500, RATE, ONE_DAY));
+      expect(pending).to.equal(calcRewards(S500, RATE, ONE_DAY * 2n));
     });
 
     // ── UPDATED: unstake no longer auto-mints rewards — principal only ──────────
