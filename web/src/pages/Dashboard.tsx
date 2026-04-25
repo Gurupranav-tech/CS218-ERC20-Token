@@ -117,9 +117,9 @@ export default function Dashboard() {
   }
 
   const statItems = [
-    { label: "Wallet Balance", value: formatTokenAmount(stats.walletBalance), unit: "C218" },
-    { label: "Staked Balance", value: formatTokenAmount(stats.stakedBalance), unit: "C218" },
-    { label: "Pending Rewards", value: formatTokenAmount(stats.pendingRewards), unit: "C218" },
+    { label: "Wallet Balance", value: formatTokenAmount(stats.walletBalance), unit: "CS218" },
+    { label: "Staked Balance", value: formatTokenAmount(stats.stakedBalance), unit: "CS218" },
+    { label: "Pending Rewards", value: formatTokenAmount(stats.pendingRewards), unit: "CS218" },
     { label: "Reward Rate", value: stats.rewardRate.toString(), unit: "/ 1000 / day" },
   ];
 
@@ -191,7 +191,7 @@ export default function Dashboard() {
               <p className="text-xs text-[#6b6b6b]">
                 Staked:{" "}
                 <span className="mono text-[#f0f0f0]">
-                  {formatTokenAmount(stats.stakedBalance)} C218
+                  {formatTokenAmount(stats.stakedBalance)} CS218
                 </span>
               </p>
             </div>
@@ -217,7 +217,7 @@ export default function Dashboard() {
                     <span className="stat-value text-3xl">
                       {formatTokenAmount(stats.pendingRewards)}
                     </span>
-                    <span className="text-sm text-[#6b6b6b] mono">C218</span>
+                    <span className="text-sm text-[#6b6b6b] mono">CS218</span>
                   </div>
                 )}
               </div>

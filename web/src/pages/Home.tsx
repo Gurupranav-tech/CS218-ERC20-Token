@@ -43,7 +43,7 @@ export default function Home() {
         <div className="mt-12 pt-8 border-t border-[#2a2a2a]">
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: "Token", value: "C218" },
+              { label: "Token", value: "CS218" },
               { label: "Network", value: "Sepolia" },
               { label: "Standard", value: "ERC-20" },
             ].map((item) => (
