@@ -3,21 +3,33 @@ import { useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
 import { useWallet } from "../contexts/WalletContext";
 import { formatTokenAmount } from "../lib/utils";
-import { executeTransaction } from "../lib/executeTransaction";
+import { executeTransaction, } from "../lib/executeTransaction";
 import type { TxState } from "../lib/executeTransaction";
 import TxStatusBadge from "../components/TxStatusBadge";
 import { ADDRESSES } from "../constants/contract";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Stats {
   walletBalance: bigint;
   stakedBalance: bigint;
   pendingRewards: bigint;
   rewardRate: bigint;
+  lockSeconds: bigint;
 }
 
 const IDLE: TxState = { status: "idle" };
 
-// ── Unstake Warning Dialog ────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatLock(seconds: bigint): string {
+  if (seconds <= 0n) return "Unlocked";
+  const m = seconds / 60n;
+  const s = seconds % 60n;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+// ── Unstake Warning Dialog ─────────────────────────────────────────────────────
 
 interface UnstakeDialogProps {
   amount: string;
@@ -34,16 +46,20 @@ function UnstakeDialog({
   onConfirm,
   onCancel,
 }: UnstakeDialogProps) {
-  const isFullUnstake =
-    ethers.parseEther(amount || "0") === stakedBalance;
+  let parsedAmount = 0n;
+  try {
+    parsedAmount = ethers.parseEther(amount || "0");
+  } catch {
+    parsedAmount = 0n;
+  }
+  const isFullUnstake = parsedAmount === stakedBalance && stakedBalance > 0n;
 
   return (
-    // Backdrop
     <div
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(0,0,0,0.7)",
+        backgroundColor: "rgba(0,0,0,0.75)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -52,7 +68,6 @@ function UnstakeDialog({
       }}
       onClick={onCancel}
     >
-      {/* Panel — stop click propagation so clicking inside doesn't close */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -65,7 +80,7 @@ function UnstakeDialog({
         }}
         className="fade-in"
       >
-        {/* Title */}
+        {/* Header */}
         <div style={{ marginBottom: "1.25rem" }}>
           <p
             style={{
@@ -79,19 +94,11 @@ function UnstakeDialog({
           >
             Confirm Unstake
           </p>
-          <h3
-            style={{
-              fontSize: "1rem",
-              fontWeight: 500,
-              color: "#f0f0f0",
-              margin: 0,
-            }}
-          >
+          <h3 style={{ fontSize: "1rem", fontWeight: 500, color: "#f0f0f0", margin: 0 }}>
             {isFullUnstake ? "Full unstake" : "Partial unstake"}
           </h3>
         </div>
 
-        {/* Divider */}
         <div style={{ borderTop: "1px solid #2a2a2a", marginBottom: "1.25rem" }} />
 
         {/* Amount row */}
@@ -103,17 +110,9 @@ function UnstakeDialog({
             marginBottom: "0.75rem",
           }}
         >
-          <span style={{ fontSize: "0.8rem", color: "#6b6b6b" }}>
-            You will receive
-          </span>
-          <span
-            style={{
-              fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: "0.9rem",
-              color: "#f0f0f0",
-            }}
-          >
-            {amount} CS218
+          <span style={{ fontSize: "0.8rem", color: "#6b6b6b" }}>You will receive</span>
+          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.9rem", color: "#f0f0f0" }}>
+            {amount} C218
           </span>
         </div>
 
@@ -126,9 +125,7 @@ function UnstakeDialog({
             marginBottom: "1.25rem",
           }}
         >
-          <span style={{ fontSize: "0.8rem", color: "#6b6b6b" }}>
-            Unclaimed rewards
-          </span>
+          <span style={{ fontSize: "0.8rem", color: "#6b6b6b" }}>Unclaimed rewards</span>
           <span
             style={{
               fontFamily: "'IBM Plex Mono', monospace",
@@ -136,16 +133,16 @@ function UnstakeDialog({
               color: pendingRewards > 0n ? "#e2e8f0" : "#6b6b6b",
             }}
           >
-            {formatTokenAmount(pendingRewards)} CS218
+            {formatTokenAmount(pendingRewards)} C218
           </span>
         </div>
 
-        {/* Warning box — only shown when there are pending rewards */}
+        {/* Warning box */}
         {pendingRewards > 0n && (
           <div
             style={{
               backgroundColor: "#0f0f0f",
-              border: "1px solid #3a2a2a",
+              border: `1px solid ${isFullUnstake ? "#3a2a2a" : "#2a2a2a"}`,
               borderRadius: "6px",
               padding: "0.875rem",
               marginBottom: "1.25rem",
@@ -153,28 +150,15 @@ function UnstakeDialog({
           >
             {isFullUnstake ? (
               <>
-                <p
-                  style={{
-                    fontSize: "0.78rem",
-                    color: "#ef4444",
-                    fontWeight: 500,
-                    marginBottom: "0.35rem",
-                  }}
-                >
+                <p style={{ fontSize: "0.78rem", color: "#ef4444", fontWeight: 500, marginBottom: "0.35rem" }}>
                   ⚠ Unclaimed rewards will be lost
                 </p>
                 <p style={{ fontSize: "0.75rem", color: "#6b6b6b", lineHeight: 1.6, margin: 0 }}>
                   You are fully unstaking. Your{" "}
-                  <span
-                    style={{
-                      fontFamily: "'IBM Plex Mono', monospace",
-                      color: "#f0f0f0",
-                    }}
-                  >
-                    {formatTokenAmount(pendingRewards)} CS218
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#f0f0f0" }}>
+                    {formatTokenAmount(pendingRewards)} C218
                   </span>{" "}
-                  in pending rewards will not be paid out because your staked
-                  balance will be zero after this transaction.{" "}
+                  in pending rewards will be forfeited.{" "}
                   <strong style={{ color: "#f0f0f0" }}>
                     Claim your rewards first before fully unstaking.
                   </strong>
@@ -182,36 +166,22 @@ function UnstakeDialog({
               </>
             ) : (
               <>
-                <p
-                  style={{
-                    fontSize: "0.78rem",
-                    color: "#e2e8f0",
-                    fontWeight: 500,
-                    marginBottom: "0.35rem",
-                  }}
-                >
-                  ℹ Rewards accrued so far
+                <p style={{ fontSize: "0.78rem", color: "#e2e8f0", fontWeight: 500, marginBottom: "0.35rem" }}>
+                  ℹ Rewards not included in unstake
                 </p>
                 <p style={{ fontSize: "0.75rem", color: "#6b6b6b", lineHeight: 1.6, margin: 0 }}>
                   You have{" "}
-                  <span
-                    style={{
-                      fontFamily: "'IBM Plex Mono', monospace",
-                      color: "#f0f0f0",
-                    }}
-                  >
-                    {formatTokenAmount(pendingRewards)} CS218
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#f0f0f0" }}>
+                    {formatTokenAmount(pendingRewards)} C218
                   </span>{" "}
-                  in pending rewards. They will not be paid out during this
-                  unstake — your remaining stake will continue accruing. Claim
-                  separately using the Claim Rewards button.
+                  in pending rewards. Your remaining stake will keep accruing.
+                  Claim separately using the Claim Rewards button.
                 </p>
               </>
             )}
           </div>
         )}
 
-        {/* Divider */}
         <div style={{ borderTop: "1px solid #2a2a2a", marginBottom: "1.25rem" }} />
 
         {/* Actions */}
@@ -229,12 +199,77 @@ function UnstakeDialog({
               color: "#0f0f0f",
             }}
           >
-            {isFullUnstake && pendingRewards > 0n
-              ? "Unstake Anyway"
-              : "Confirm Unstake"}
+            {isFullUnstake && pendingRewards > 0n ? "Unstake Anyway" : "Confirm Unstake"}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Lockdown Banner ───────────────────────────────────────────────────────────
+
+function LockdownBanner({ lockSeconds }: { lockSeconds: bigint }) {
+  const [display, setDisplay] = useState(formatLock(lockSeconds));
+
+  // Count down locally every second for a live timer feel
+  useEffect(() => {
+    if (lockSeconds <= 0n) {
+      setDisplay("Unlocked");
+      return;
+    }
+    setDisplay(formatLock(lockSeconds));
+    let remaining = Number(lockSeconds);
+    const interval = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        setDisplay("Unlocked");
+        clearInterval(interval);
+      } else {
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        setDisplay(
+          `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+        );
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockSeconds]);
+
+  if (lockSeconds <= 0n) return null;
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#0f0f0f",
+        border: "1px solid #2a2a2a",
+        borderRadius: "6px",
+        padding: "0.75rem 1rem",
+        marginBottom: "1rem",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+        <span style={{ fontSize: "0.8rem", color: "#6b6b6b" }}>
+          🔒 Unstaking locked
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "#6b6b6b" }}>
+          — tokens are locked for 30 minutes after each stake
+        </span>
+      </div>
+      <span
+        style={{
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: "0.85rem",
+          color: "#f0f0f0",
+          minWidth: "3.5rem",
+          textAlign: "right",
+        }}
+      >
+        {display}
+      </span>
     </div>
   );
 }
@@ -250,6 +285,7 @@ export default function Dashboard() {
     stakedBalance: 0n,
     pendingRewards: 0n,
     rewardRate: 0n,
+    lockSeconds: 0n,
   });
   const [loading, setLoading] = useState(true);
   const [stakeAmount, setStakeAmount] = useState("");
@@ -266,20 +302,22 @@ export default function Dashboard() {
   const fetchStats = useCallback(async () => {
     if (!tokenContract || !stakingContract || !address) return;
     try {
-      const [wallet, staked, rewards, rate] = await Promise.all([
+      const [wallet, staked, rewards, rate, lock] = await Promise.all([
         tokenContract.balanceOf(address),
         stakingContract.getStakedBalance(address),
         stakingContract.getPendingRewards(address),
         stakingContract.rewardRate(),
+        stakingContract.getTimeUntilUnlock(address),
       ]);
       setStats({
         walletBalance: wallet,
         stakedBalance: staked,
         pendingRewards: rewards,
         rewardRate: rate,
+        lockSeconds: lock,
       });
     } catch {
-      // contract not yet reachable
+      // contracts not yet reachable
     } finally {
       setLoading(false);
     }
@@ -290,6 +328,8 @@ export default function Dashboard() {
     const interval = setInterval(fetchStats, 30_000);
     return () => clearInterval(interval);
   }, [fetchStats]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
   async function handleStake() {
     if (!stakingContract || !tokenContract || !stakeAmount) return;
@@ -305,13 +345,15 @@ export default function Dashboard() {
         return stakingContract.stake(amount);
       },
       setStakeTx,
-      () => { setStakeAmount(""); fetchStats(); }
+      () => {
+        setStakeAmount("");
+        fetchStats();
+      }
     );
   }
 
-  // Opens the confirmation dialog — actual tx fires only on confirm
   function handleUnstakeClick() {
-    if (!stakeAmount || stats.stakedBalance === 0n) return;
+    if (!stakeAmount || stats.stakedBalance === 0n || stats.lockSeconds > 0n) return;
     setShowUnstakeDialog(true);
   }
 
@@ -322,7 +364,10 @@ export default function Dashboard() {
     await executeTransaction(
       () => stakingContract.unstake(amount),
       setUnstakeTx,
-      () => { setStakeAmount(""); fetchStats(); }
+      () => {
+        setStakeAmount("");
+        fetchStats();
+      }
     );
   }
 
@@ -339,16 +384,39 @@ export default function Dashboard() {
     setStakeAmount(ethers.formatEther(stats.walletBalance));
   }
 
+  // ── Derived UI state ─────────────────────────────────────────────────────────
+
+  const isLocked = stats.lockSeconds > 0n;
+  const canUnstake = !!stakeAmount && stats.stakedBalance > 0n && !isLocked && unstakeTx.status !== "pending";
+  const canClaim = stats.pendingRewards > 0n && claimTx.status !== "pending";
+
   const statItems = [
-    { label: "Wallet Balance", value: formatTokenAmount(stats.walletBalance), unit: "CS218" },
-    { label: "Staked Balance", value: formatTokenAmount(stats.stakedBalance), unit: "CS218" },
-    { label: "Pending Rewards", value: formatTokenAmount(stats.pendingRewards), unit: "CS218" },
-    { label: "Reward Rate", value: stats.rewardRate.toString(), unit: "/ day" },
+    {
+      label: "Wallet Balance",
+      value: formatTokenAmount(stats.walletBalance),
+      unit: "C218",
+    },
+    {
+      label: "Staked Balance",
+      value: formatTokenAmount(stats.stakedBalance),
+      unit: "C218",
+    },
+    {
+      label: "Pending Rewards",
+      value: formatTokenAmount(stats.pendingRewards),
+      unit: "C218",
+    },
+    {
+      label: "Reward Rate",
+      value: stats.rewardRate.toString(),
+      unit: "/ 1000 / day",
+    },
   ];
+
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Unstake confirmation dialog — rendered above everything */}
       {showUnstakeDialog && (
         <UnstakeDialog
           amount={stakeAmount}
@@ -363,7 +431,7 @@ export default function Dashboard() {
         <div className="max-w-3xl mx-auto px-6 py-10">
 
           {/* Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-[#2a2a2a] rounded overflow-hidden mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-px border border-[#2a2a2a] rounded overflow-hidden mb-6">
             {statItems.map((item, i) => (
               <div key={i} className="bg-[#1a1a1a] p-4">
                 <p className="text-xs text-[#6b6b6b] mb-2">{item.label}</p>
@@ -379,16 +447,28 @@ export default function Dashboard() {
             ))}
           </div>
 
+          {/* Lockdown Banner — only shown when locked */}
+          <LockdownBanner lockSeconds={stats.lockSeconds} />
+
           <div className="grid md:grid-cols-2 gap-4">
 
-            {/* Stake / Unstake Card */}
-            <div className={`card ${stakeTx.status === "pending" || unstakeTx.status === "pending" ? "tx-pending" : ""}`}>
-              <h2 className="text-sm font-medium text-[#f0f0f0] mb-1">Stake / Unstake</h2>
+            {/* ── Stake / Unstake Card ── */}
+            <div
+              className={`card ${stakeTx.status === "pending" || unstakeTx.status === "pending"
+                ? "tx-pending"
+                : ""
+                }`}
+            >
+              <h2 className="text-sm font-medium text-[#f0f0f0] mb-1">
+                Stake / Unstake
+              </h2>
               <p className="text-xs text-[#6b6b6b] mb-5">
-                Partial unstaking supported — remaining stake keeps accruing.
+                Tokens are locked for 30 minutes after each stake.
+                Partial unstaking supported.
               </p>
 
               <div className="space-y-3">
+                {/* Amount input */}
                 <div className="relative">
                   <input
                     type="number"
@@ -406,6 +486,7 @@ export default function Dashboard() {
                   </button>
                 </div>
 
+                {/* Action buttons */}
                 <div className="flex gap-2">
                   <button
                     onClick={handleStake}
@@ -414,34 +495,66 @@ export default function Dashboard() {
                   >
                     {stakeTx.status === "pending" ? "Staking..." : "Stake"}
                   </button>
+
                   <button
                     onClick={handleUnstakeClick}
-                    disabled={!stakeAmount || stats.stakedBalance === 0n || unstakeTx.status === "pending"}
+                    disabled={!canUnstake}
                     className="btn-ghost flex-1 py-2.5"
+                    title={
+                      isLocked
+                        ? `Locked — ${formatLock(stats.lockSeconds)} remaining`
+                        : ""
+                    }
                   >
-                    {unstakeTx.status === "pending" ? "Unstaking..." : "Unstake"}
+                    {unstakeTx.status === "pending"
+                      ? "Unstaking..."
+                      : isLocked
+                        ? `🔒 ${formatLock(stats.lockSeconds)}`
+                        : "Unstake"}
                   </button>
                 </div>
 
-                <p className="text-xs text-[#6b6b6b]">
-                  Staked:{" "}
-                  <span className="mono text-[#f0f0f0]">
-                    {formatTokenAmount(stats.stakedBalance)} CS218
-                  </span>
-                </p>
+                {/* Staked balance hint */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <p className="text-xs text-[#6b6b6b]">
+                    Staked:{" "}
+                    <span className="mono text-[#f0f0f0]">
+                      {formatTokenAmount(stats.stakedBalance)} C218
+                    </span>
+                  </p>
+                  {isLocked && (
+                    <p className="text-xs text-[#6b6b6b]">
+                      Unlocks in{" "}
+                      <span className="mono text-[#f0f0f0]">
+                        {formatLock(stats.lockSeconds)}
+                      </span>
+                    </p>
+                  )}
+                </div>
               </div>
 
               <TxStatusBadge state={stakeTx} />
               <TxStatusBadge state={unstakeTx} />
             </div>
 
-            {/* Claim Rewards Card */}
-            <div className={`card flex flex-col justify-between ${claimTx.status === "pending" ? "tx-pending" : ""}`}>
+            {/* ── Claim Rewards Card ── */}
+            <div
+              className={`card flex flex-col justify-between ${claimTx.status === "pending" ? "tx-pending" : ""
+                }`}
+            >
               <div>
                 <h2 className="text-sm font-medium text-[#f0f0f0] mb-1">Rewards</h2>
                 <p className="text-xs text-[#6b6b6b] mb-6">
-                  Claim rewards without unstaking. Resets the accrual timer.
+                  Claim without unstaking. Not affected by the lockdown period.
+                  Resets the accrual timer.
                 </p>
+
                 <div className="py-4 border-t border-b border-[#2a2a2a] mb-5">
                   <p className="text-xs text-[#6b6b6b] mono mb-1">Claimable Now</p>
                   {loading ? (
@@ -451,16 +564,25 @@ export default function Dashboard() {
                       <span className="stat-value text-3xl">
                         {formatTokenAmount(stats.pendingRewards)}
                       </span>
-                      <span className="text-sm text-[#6b6b6b] mono">CS218</span>
+                      <span className="text-sm text-[#6b6b6b] mono">C218</span>
                     </div>
                   )}
                 </div>
+
+                {/* Reward rate context */}
+                <p className="text-xs text-[#6b6b6b]">
+                  Rate:{" "}
+                  <span className="mono text-[#f0f0f0]">
+                    {stats.rewardRate.toString()}
+                  </span>{" "}
+                  tokens / 1000 staked / day
+                </p>
               </div>
 
-              <div>
+              <div style={{ marginTop: "1.25rem" }}>
                 <button
                   onClick={handleClaim}
-                  disabled={stats.pendingRewards === 0n || claimTx.status === "pending"}
+                  disabled={!canClaim}
                   className="btn-primary w-full py-2.5"
                 >
                   {claimTx.status === "pending" ? "Claiming..." : "Claim Rewards"}
@@ -472,15 +594,58 @@ export default function Dashboard() {
           </div>
 
           {/* Contract addresses */}
-          <div className="mt-6 p-4 border border-[#2a2a2a] rounded">
-            <div className="flex flex-wrap gap-6">
+          <div
+            style={{
+              marginTop: "1.5rem",
+              padding: "1rem",
+              border: "1px solid #2a2a2a",
+              borderRadius: "6px",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
               <div>
-                <p className="text-xs text-[#6b6b6b] mono mb-1">Token Contract</p>
-                <p className="text-xs mono text-[#f0f0f0]">{ADDRESSES.token}</p>
+                <p
+                  style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "0.7rem",
+                    color: "#6b6b6b",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Token Contract
+                </p>
+                <p
+                  style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "0.75rem",
+                    color: "#f0f0f0",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {ADDRESSES.token}
+                </p>
               </div>
               <div>
-                <p className="text-xs text-[#6b6b6b] mono mb-1">Staking Contract</p>
-                <p className="text-xs mono text-[#f0f0f0]">{ADDRESSES.staking}</p>
+                <p
+                  style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "0.7rem",
+                    color: "#6b6b6b",
+                    marginBottom: "0.25rem",
+                  }}
+                >
+                  Staking Contract
+                </p>
+                <p
+                  style={{
+                    fontFamily: "'IBM Plex Mono', monospace",
+                    fontSize: "0.75rem",
+                    color: "#f0f0f0",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {ADDRESSES.staking}
+                </p>
               </div>
             </div>
           </div>

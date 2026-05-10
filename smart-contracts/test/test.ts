@@ -2,6 +2,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 
+// ─── Reward formula (mirrors StakingContract._calculateRewardsFromCache) ──────
+// rewards = (stakedAmount * rewardRate * elapsedSeconds) / (1000 * 86400)
 function calcRewards(
   staked: bigint,
   rate: bigint,
@@ -12,6 +14,7 @@ function calcRewards(
 
 describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", function() {
 
+  // ─── Fixture ───────────────────────────────────────────────────────────────
   async function deployStakingFixture() {
     const [owner, user1, user2, attacker] = await ethers.getSigners();
 
@@ -40,13 +43,15 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
   }
 
   const ONE_DAY = 86400n;
+  const THIRTY_MINUTES = 30n * 60n; // 1800 seconds
   const RATE = 100n;
   const S1000 = ethers.parseUnits("1000", 18);
   const S2000 = ethers.parseUnits("2000", 18);
   const S500 = ethers.parseUnits("500", 18);
 
-  // ─── 1. Deployment & Setup ───────────────────────────────────────────────────
+  // ─── 1. Deployment & Setup ─────────────────────────────────────────────────
   describe("1. Deployment & Setup", function() {
+
     it("1. Should set the correct token address in staking contract", async function() {
       const { token, staking } = await loadFixture(deployStakingFixture);
       expect(await staking.token()).to.equal(await token.getAddress());
@@ -61,9 +66,10 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const { token, stakingAddress } = await loadFixture(deployStakingFixture);
       expect(await token.minter()).to.equal(stakingAddress);
     });
+
   });
 
-  // ─── 2. Core Staking Logic ───────────────────────────────────────────────────
+  // ─── 2. Core Staking Logic ─────────────────────────────────────────────────
   describe("2. Core Staking Logic", function() {
 
     it("4. [MAIN TEST CASE] Should correctly transfer tokens from user to contract on stake", async function() {
@@ -101,9 +107,10 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       await staking.connect(user1).stake(S500);
       expect(await staking.getStakedBalance(user1.address)).to.equal(S1000);
     });
+
   });
 
-  // ─── 3. Time Travel & Reward Calculation ─────────────────────────────────────
+  // ─── 3. Time Travel & Reward Calculation ──────────────────────────────────
   describe("3. Time Travel & Reward Calculation", function() {
 
     it("9. [MAIN TEST CASE] Should accrue rewards linearly (Day 2 equals 2x Day 1)", async function() {
@@ -132,9 +139,17 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const tFuture = t2 + ONE_DAY;
       await time.increaseTo(tFuture);
 
-      expect(await staking.getPendingRewards(user1.address)).to.equal(calcRewards(S1000, RATE, tFuture - t1));
-      expect(await staking.getPendingRewards(user2.address)).to.equal(calcRewards(S2000, RATE, tFuture - t2));
-      expect(calcRewards(S2000, RATE, ONE_DAY)).to.equal(calcRewards(S1000, RATE, ONE_DAY) * 2n);
+      expect(await staking.getPendingRewards(user1.address)).to.equal(
+        calcRewards(S1000, RATE, tFuture - t1)
+      );
+      expect(await staking.getPendingRewards(user2.address)).to.equal(
+        calcRewards(S2000, RATE, tFuture - t2)
+      );
+
+      // Core proportionality — same duration, 2x stake → 2x reward
+      expect(calcRewards(S2000, RATE, ONE_DAY)).to.equal(
+        calcRewards(S1000, RATE, ONE_DAY) * 2n
+      );
     });
 
     it("27. Reward calculation — 1 second of accrual yields a non-zero reward", async function() {
@@ -143,9 +158,10 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       await time.increase(1);
       expect(await staking.getPendingRewards(user1.address)).to.be.gt(0n);
     });
+
   });
 
-  // ─── 4. Claiming Rewards ──────────────────────────────────────────────────────
+  // ─── 4. Claiming Rewards ───────────────────────────────────────────────────
   describe("4. Claiming Rewards", function() {
 
     it("11. [MAIN TEST CASE] Should mint correct reward amount to user upon claim", async function() {
@@ -160,7 +176,9 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const balAfter = await token.balanceOf(user1.address);
 
       const receipt = await tx.wait();
-      const claimTime = BigInt((await ethers.provider.getBlock(receipt!.blockNumber))!.timestamp);
+      const claimTime = BigInt(
+        (await ethers.provider.getBlock(receipt!.blockNumber))!.timestamp
+      );
       const actualElapsed = claimTime - stakeTime;
       const expectedReward = calcRewards(S1000, RATE, actualElapsed);
 
@@ -173,12 +191,16 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const stakeTime = BigInt(await time.latest());
 
       await time.increaseTo(stakeTime + ONE_DAY);
-      await staking.connect(user1).claimRewards();
+      await staking.connect(user1).claimRewards(); // first claim — resets timer
 
       const balAfterFirst = await token.balanceOf(user1.address);
+
+      // Second call must not revert
       await expect(staking.connect(user1).claimRewards()).to.not.be.reverted;
 
       const balAfterSecond = await token.balanceOf(user1.address);
+
+      // At most 2 seconds of dust may accrue between the two transactions
       const maxDust = calcRewards(S1000, RATE, 2n);
       expect(balAfterSecond - balAfterFirst).to.be.lte(maxDust);
     });
@@ -188,14 +210,19 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       await expect(staking.connect(user1).claimRewards())
         .to.be.revertedWith("StakingContract: nothing staked");
     });
+
   });
 
-  // ─── 5. Unstaking Logic ───────────────────────────────────────────────────────
+  // ─── 5. Unstaking Logic ────────────────────────────────────────────────────
   describe("5. Unstaking Logic (Partial & Full)", function() {
 
     it("13. [MAIN TEST CASE] Should return exact principal amount back to user on FULL unstake", async function() {
       const { token, staking, user1, stakingAddress } = await loadFixture(deployStakingFixture);
       await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Advance past the 30-minute lockdown
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
 
       const tx = await staking.connect(user1).unstake(S1000);
       await expect(tx).to.changeTokenBalances(
@@ -211,22 +238,21 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       await staking.connect(user1).stake(S1000);
       const stakeTime = BigInt(await time.latest());
 
-      // Advance 1 day then partial unstake
-      await time.increaseTo(stakeTime + ONE_DAY);
+      // Advance past lockdown then partial unstake
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
       await staking.connect(user1).unstake(S500);
 
       // Verify staked balance reduced
       expect(await staking.getStakedBalance(user1.address)).to.equal(S500);
 
-      // Jump to exactly stakeTime + 2 days — elapsed from lastClaimTimestamp is exactly 2*ONE_DAY
+      // Jump to exactly stakeTime + 2 days — lastClaimTimestamp was never reset,
+      // so elapsed = 2 days from the original stake time
       await time.increaseTo(stakeTime + ONE_DAY * 2n);
       const pending = await staking.getPendingRewards(user1.address);
 
-      // lastClaimTimestamp = stakeTime (never reset), elapsed = 2*ONE_DAY, amount = S500
       expect(pending).to.equal(calcRewards(S500, RATE, ONE_DAY * 2n));
     });
 
-    // ── UPDATED: unstake no longer auto-mints rewards — principal only ──────────
     it("15. Unstake returns ONLY principal — pending rewards NOT included", async function() {
       const { token, staking, user1 } = await loadFixture(deployStakingFixture);
       await staking.connect(user1).stake(S1000);
@@ -234,7 +260,7 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
 
       await time.increaseTo(stakeTime + ONE_DAY);
 
-      // Confirm there are accrued rewards before unstaking
+      // Confirm rewards have accrued before unstaking
       const pendingBefore = await staking.getPendingRewards(user1.address);
       expect(pendingBefore).to.be.gt(0n);
 
@@ -245,8 +271,7 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       // User receives EXACTLY the staked principal — no rewards mixed in
       expect(balAfter - balBefore).to.equal(S1000);
 
-      // After full unstake, staked amount = 0 so pending rewards also = 0
-      // (rewards were never claimed — they are forfeited on full unstake)
+      // After full unstake, amount = 0, so pending rewards also = 0
       expect(await staking.getStakedBalance(user1.address)).to.equal(0n);
       expect(await staking.getPendingRewards(user1.address)).to.equal(0n);
     });
@@ -254,6 +279,11 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
     it("16. Should emit Unstaked event on partial or full unstake", async function() {
       const { staking, user1 } = await loadFixture(deployStakingFixture);
       await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Advance past the 30-minute lockdown
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
+
       await expect(staking.connect(user1).unstake(S1000))
         .to.emit(staking, "Unstaked")
         .withArgs(user1.address, S1000);
@@ -262,12 +292,18 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
     it("17. Should revert if attempting to unstake more than the staked balance", async function() {
       const { staking, user1 } = await loadFixture(deployStakingFixture);
       await staking.connect(user1).stake(S500);
+      const stakeTime = BigInt(await time.latest());
+
+      // Advance past lockdown so amount-check revert is what fires, not lock revert
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
+
       await expect(staking.connect(user1).unstake(S1000))
         .to.be.revertedWith("StakingContract: amount exceeds staked balance");
     });
+
   });
 
-  // ─── 6. Security & Attack Vectors ────────────────────────────────────────────
+  // ─── 6. Security & Attack Vectors ─────────────────────────────────────────
   describe("6. Security & Attack Vectors", function() {
 
     it("18. [MAIN TEST CASE - ATTACK] Prevent direct unauthorised minting", async function() {
@@ -288,16 +324,22 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const attackAmount = ethers.parseUnits("50000", 18);
 
       await staking.connect(attacker).stake(attackAmount);
+      const stakeTime = BigInt(await time.latest());
 
-      await time.increase(1);
+      // Advance past lockdown — the lockdown itself defeats true flash-staking
+      // (same-block stake+unstake is impossible). We verify that even after the
+      // lock the attacker earns only proportional dust, not a disproportionate gain.
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
+
       const balBefore = await token.balanceOf(attacker.address);
       await staking.connect(attacker).unstake(attackAmount);
       const balAfter = await token.balanceOf(attacker.address);
 
-      // balAfter - balBefore = attackAmount (principal back, no rewards from unstake)
-      // gained = attackAmount - attackAmount = 0
+      // gained = anything received above the returned principal
       const gained = balAfter - balBefore - attackAmount;
-      const maxDust = calcRewards(attackAmount, RATE, 2n);
+
+      // At most 30 minutes + 2 seconds of accrual — negligible for any strategy
+      const maxDust = calcRewards(attackAmount, RATE, THIRTY_MINUTES + 2n);
       expect(gained).to.be.lte(maxDust);
       expect(await staking.getPendingRewards(attacker.address)).to.equal(0n);
     });
@@ -305,7 +347,14 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
     it("21. [MAIN TEST CASE - ATTACK] Unstake state update occurs BEFORE external call (CEI / Reentrancy guard)", async function() {
       const { staking, user1 } = await loadFixture(deployStakingFixture);
       await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Advance past the 30-minute lockdown
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
+
       await staking.connect(user1).unstake(S1000);
+
+      // State must be fully updated — amount must be zeroed
       const finalStakeInfo = await staking.stakes(user1.address);
       expect(finalStakeInfo.amount).to.equal(0n);
     });
@@ -314,6 +363,7 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const { staking, owner, user1 } = await loadFixture(deployStakingFixture);
       const NEW_RATE = 200n;
 
+      // Set rate BEFORE staking so entire accrual window uses NEW_RATE
       await staking.connect(owner).setRewardRate(NEW_RATE);
       await staking.connect(user1).stake(S1000);
       const stakeTime = BigInt(await time.latest());
@@ -338,17 +388,19 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       const balAfter = await token.balanceOf(user1.address);
 
       const receipt = await tx.wait();
-      const secondStakeTime = BigInt((await ethers.provider.getBlock(receipt!.blockNumber))!.timestamp);
+      const secondStakeTime = BigInt(
+        (await ethers.provider.getBlock(receipt!.blockNumber))!.timestamp
+      );
       const actualElapsed = secondStakeTime - firstStakeTime;
       const expectedAutoClaim = calcRewards(S1000, RATE, actualElapsed);
 
-      // Net: +auto-claimed rewards minted, -S500 transferred in
+      // Net change = +auto-claimed rewards minted − S500 transferred in
       expect(balAfter - balBefore).to.equal(expectedAutoClaim - S500);
     });
 
     it("25. Malicious user cannot unstake 0 tokens", async function() {
       const { staking, attacker } = await loadFixture(deployStakingFixture);
-      // Attacker has no stake, so "nothing staked" fires before "cannot unstake zero"
+      // Attacker has no stake — "nothing staked" fires before "cannot unstake zero"
       await expect(staking.connect(attacker).unstake(0))
         .to.be.revertedWith("StakingContract: nothing staked");
     });
@@ -381,5 +433,107 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
       await expect(token.connect(owner).setMinter(ethers.ZeroAddress))
         .to.be.revertedWith("Minter cannot be zero address");
     });
+
   });
+
+  // ─── 7. Lockdown Period ────────────────────────────────────────────────────
+  describe("7. Lockdown Period", function() {
+
+    it("30. Unstake reverts if called immediately after stake", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+
+      await expect(staking.connect(user1).unstake(S1000))
+        .to.be.revertedWith(
+          "StakingContract: tokens are locked for 30 minutes after staking"
+        );
+    });
+
+    it("31. Unstake reverts if called 1 second before lock expires", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Pin the NEXT block to exactly 1 second before lock expiry.
+      // time.increaseTo would set the clock but Hardhat mines the next tx
+      // 1 second later — setNextBlockTimestamp forces the unstake tx itself
+      // to land at stakeTime + THIRTY_MINUTES - 1, which is still inside the lock.
+      await time.setNextBlockTimestamp(stakeTime + THIRTY_MINUTES - 1n);
+
+      await expect(staking.connect(user1).unstake(S1000))
+        .to.be.revertedWith(
+          "StakingContract: tokens are locked for 30 minutes after staking"
+        );
+    });
+
+    it("32. Unstake succeeds exactly at lock expiry (stakeTime + 30 minutes)", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      await time.increaseTo(stakeTime + THIRTY_MINUTES);
+
+      await expect(staking.connect(user1).unstake(S1000)).to.not.be.reverted;
+    });
+
+    it("33. Re-staking resets the lockdown window", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S500);
+      const firstStakeTime = BigInt(await time.latest());
+
+      // Wait 29 minutes — almost unlocked from first stake
+      await time.increaseTo(firstStakeTime + THIRTY_MINUTES - 60n);
+
+      // Stake again — lock resets to now + 30 minutes
+      await staking.connect(user1).stake(S500);
+      const secondStakeTime = BigInt(await time.latest());
+
+      // 60 seconds after second stake — still well inside new lock window
+      await time.increaseTo(secondStakeTime + 60n);
+      await expect(staking.connect(user1).unstake(S1000))
+        .to.be.revertedWith(
+          "StakingContract: tokens are locked for 30 minutes after staking"
+        );
+
+      // After full 30 minutes from second stake — now unlocked
+      await time.increaseTo(secondStakeTime + THIRTY_MINUTES);
+      await expect(staking.connect(user1).unstake(S1000)).to.not.be.reverted;
+    });
+
+    it("34. getTimeUntilUnlock returns correct remaining seconds", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Jump to 10 minutes after stake — 20 minutes should remain
+      await time.increaseTo(stakeTime + 600n);
+      const remaining = await staking.getTimeUntilUnlock(user1.address);
+
+      // Allow ±2 seconds tolerance for block mining variance
+      expect(remaining).to.be.closeTo(1200n, 2n);
+    });
+
+    it("35. getTimeUntilUnlock returns 0 after lock expires", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      await time.increaseTo(stakeTime + THIRTY_MINUTES + 60n);
+      expect(await staking.getTimeUntilUnlock(user1.address)).to.equal(0n);
+    });
+
+    it("36. claimRewards is NOT affected by the lockdown — works during lock", async function() {
+      const { staking, user1 } = await loadFixture(deployStakingFixture);
+      await staking.connect(user1).stake(S1000);
+      const stakeTime = BigInt(await time.latest());
+
+      // Still well inside the lockdown window
+      await time.increaseTo(stakeTime + 60n);
+
+      // claimRewards must succeed — only unstake is gated by the lock
+      await expect(staking.connect(user1).claimRewards()).to.not.be.reverted;
+    });
+
+  });
+
 });

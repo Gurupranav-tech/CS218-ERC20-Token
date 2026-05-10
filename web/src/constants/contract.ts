@@ -30,4 +30,5 @@ export const STAKING_ABI = [
   "function setRewardRate(uint256 _rewardRate)",
   "function rewardRate() view returns (uint256)",
   "function owner() view returns (address)",
+  "function getTimeUntilUnlock(address user) view returns (uint256)",
 ];
