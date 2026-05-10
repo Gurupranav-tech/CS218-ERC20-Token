@@ -208,21 +208,21 @@ describe("Project 9: ERC-20 Token with Staking Rewards - Updated Suite", functio
 
     it("14. [MAIN TEST CASE] Partial unstaking should reduce stake balance without resetting timer", async function() {
       const { staking, user1 } = await loadFixture(deployStakingFixture);
-
       await staking.connect(user1).stake(S1000);
-
       const stakeTime = BigInt(await time.latest());
 
+      // Advance 1 day then partial unstake
       await time.increaseTo(stakeTime + ONE_DAY);
-
       await staking.connect(user1).unstake(S500);
 
-      const unstakeTime = BigInt(await time.latest());
+      // Verify staked balance reduced
+      expect(await staking.getStakedBalance(user1.address)).to.equal(S500);
 
-      await time.increaseTo(unstakeTime + ONE_DAY);
-
+      // Jump to exactly stakeTime + 2 days — elapsed from lastClaimTimestamp is exactly 2*ONE_DAY
+      await time.increaseTo(stakeTime + ONE_DAY * 2n);
       const pending = await staking.getPendingRewards(user1.address);
 
+      // lastClaimTimestamp = stakeTime (never reset), elapsed = 2*ONE_DAY, amount = S500
       expect(pending).to.equal(calcRewards(S500, RATE, ONE_DAY * 2n));
     });
 
