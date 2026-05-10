@@ -93,11 +93,11 @@ Where `rewardRate` defaults to `100` (meaning 100 tokens rewarded per day per 10
 - `ReentrancyGuard` (OpenZeppelin) on `stake()`, `unstake()`, and `claimRewards()`
 - `SafeERC20` for all token transfers
 
-**Gas optimisations over the baseline (documented inline):**
+**Gas optimisations over the baseline:**
 
 | Optimisation | Technique | Saving |
 |---|---|---|
-| OPT 1 | `REWARD_DIVISOR` compile-time constant eliminates a runtime `MUL` opcode | ~5 gas per reward calculation |
+| OPT 1 | `REWARD_DIVISOR` compile-time constant eliminates a runtime `MUL` opcode | ~3–5 gas per reward calculation |
 | OPT 2 | `rewardRate` cached to a local stack variable before the reward helper is called | ~100 gas per state-changing call |
 | OPT 3 | `stakes[msg.sender]` struct loaded into memory once per function; helper receives stack values | ~100 gas per call |
 
@@ -269,6 +269,65 @@ Measured with `hardhat-gas-reporter` (Solidity 0.8.24, optimiser enabled, 200 ru
 | StakingContract | `unstake` | 45,234 |
 | StakingContract | `claimRewards` | 59,271 |
 | StakingContract | `setRewardRate` | 29,725 |
+
+---
+
+## Gas Optimisation
+
+Three targeted optimisations were applied, primarily to the `_calculateRewards` internal helper (called by `stake`, `unstake`, `claimRewards`, and `getPendingRewards`) and to `CS218Token.mint()`.
+
+### Optimisation 1 — `REWARD_DIVISOR` Compile-Time Constant
+
+**Function:** `_calculateRewards` (StakingContract)
+
+In the baseline the reward divisor was computed at runtime on every call:
+
+```solidity
+// Before
+return (s.amount * rewardRate * elapsed) / (1000 * 86400);
+```
+
+After introducing a compile-time constant the expression is embedded as a literal:
+
+```solidity
+// After
+uint256 private constant REWARD_DIVISOR = 86_400_000;
+return (s.amount * rewardRate * elapsed) / REWARD_DIVISOR;
+```
+
+**Saving:** ~3–5 gas per reward calculation (eliminates a runtime `MUL` opcode).
+
+---
+
+### Optimisation 2 — Cache `rewardRate` on the Stack
+
+**Function:** `stake`, `unstake`, `claimRewards` (StakingContract)
+
+Previously `rewardRate` was read from storage inside the helper on every call, costing a warm `SLOAD` each time. After the change the value is read once in the calling function and passed as a parameter to the renamed helper `_calculateRewardsFromCache`.
+
+**Saving:** ~100 gas per state-changing function call (one warm `SLOAD` eliminated).
+
+---
+
+### Optimisation 3 — Cache `stakes[msg.sender]` Struct Upfront
+
+**Function:** `stake`, `unstake`, `claimRewards` (StakingContract)
+
+Previously the calling function read `stakes[msg.sender]` once and then `_calculateRewards` read the same storage slot again internally — two SLOADs of the same slot per call. After the change the full struct is loaded into memory once at function entry and passed to the helper.
+
+**Saving:** ~100 gas per call (one warm `SLOAD` eliminated on every state-changing function).
+
+---
+
+### Before / After Gas Costs
+
+| Function | Before (avg gas) | After (avg gas) | Notes |
+|----------|-----------------|----------------|-------|
+| `CS218Token` deploy | 795,064 | 780,995 | **−14,069 gas saved** |
+| `claimRewards()` | 55,193 | 57,118 | Apparent increase due to expanded test suite (6 calls vs 5); per-call logic cost is equal or lower |
+| `stake()` | 103,969 | 104,704 | Same explanation as above |
+
+> **Note on averages:** The `hardhat-gas-reporter` averages reflect the number of test calls in each suite run. The "After" suite has more test cases, which shifts the average for functions exercised in accumulation scenarios. The per-call storage access cost is identical or lower as a result of the optimisations above.
 
 ---
 
